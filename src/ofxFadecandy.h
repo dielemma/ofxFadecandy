@@ -20,55 +20,57 @@ typedef struct OPCPacket
 class ofxFadecandy
 {
 public:
-	bool setup(string address, int port);
+	ofxFadecandy();
+	~ofxFadecandy();
+
+	bool setup(string address, int port, bool autoUpdate = true, bool autoDraw = true);
 	void update(ofEventArgs& event);
 	void draw(ofEventArgs& event);
-	void draw();
 
-	void initFrameBuffer(int npixels);
-	void initFrameBuffer();
-	void write(vector<ofColor>);
+
+	void toggleAutoDraw();
+	void toggleAutoUpdate();
+	bool getAutoUpdateState();
+	bool getAutoDrawState();
 
 	void cleanup();
 	void close();
 
-	bool isConnected();
-	void tryConnect();
-
-
 	OPCClient& getClient();
 	string address;
 	int port;
+	bool isConnected();
+	void tryConnect();
+
 	
 	vector <string> error;	
 
 	void setupStage(int x0, int y0, int width, int height);
 	void updateStagePixels();
+	
 	ofPixels stagePixels;
+	ofImage stageImg;
 
 	vector<ofVec2f> allLEDcoords;
 	vector<ofColor> allLEDcolors;
 
-	std::vector <shared_ptr<ofxLEDobject>> LEDgroups;
-
 	std::vector<uint8_t> frameBuffer;
+	void initFrameBuffer(int npixels);
+	void initFrameBuffer();
+	void write(vector<ofColor>);
 		
 
-	ofImage screen;
+	
 
 private:
+	bool autoDraw, autoUpdate;
 	OPCClient opc;
-	float timer;
-
-	// this holds the data to be sent to the device (incl. header)
-	
-	int frameBytes;
+	//float timer;
 
 	void connect();
-	void disconnect();
 
-	unsigned char * glPixels;
-	ofFbo screenCapture;
+	//unsigned char * glPixels;
+	//ofFbo screenCapture;
 
 	int stageX0;
 	int stageY0;

@@ -1,13 +1,36 @@
  #include "ofxFadecandy.h"
 
-bool ofxFadecandy::setup(string address, int port)
+ofxFadecandy::ofxFadecandy()
 {
-	// register update method to get called automatically
-	ofAddListener(ofEvents().update, this, &ofxFadecandy::update);
-	ofAddListener(ofEvents().draw, this, &ofxFadecandy::draw);
 
+}
+
+ofxFadecandy::~ofxFadecandy()
+{
+}
+
+bool ofxFadecandy::setup(string address, int port, bool autoUpdate, bool autoDraw )
+{
 	this->address = address;
 	this->port = port;
+
+	this->autoUpdate = autoUpdate;
+	this->autoDraw = autoDraw;
+	// register update and draw methods to get called automatically
+	if (autoUpdate)
+	{	
+		ofAddListener(ofEvents().update, this, &ofxFadecandy::update);
+	}
+	if (autoDraw)
+	{
+		ofAddListener(ofEvents().draw, this, &ofxFadecandy::draw);	
+	}	
+
+	// these values flag that the stage has not been setup
+	stageX0 = -1;
+	stageY0 = -1;
+	stageWidth = -1;
+	stageHeight = -1;
 
 	try
 	{
@@ -28,35 +51,60 @@ bool ofxFadecandy::setup(string address, int port)
 	return true;
 }
 
+void ofxFadecandy::toggleAutoUpdate()
+{
+	if (autoUpdate)
+	{	
+		ofRemoveListener(ofEvents().update, this, &ofxFadecandy::update);
+	}
+	else
+	{
+		ofAddListener(ofEvents().update, this, &ofxFadecandy::update);	
+	}
+	autoUpdate = !autoUpdate;
+}
+
+bool ofxFadecandy::getAutoUpdateState()
+{
+	return autoUpdate;
+}
+
+void ofxFadecandy::toggleAutoDraw()
+{
+	if (autoDraw)
+	{	
+		ofRemoveListener(ofEvents().draw, this, &ofxFadecandy::draw);
+	}
+	else
+	{
+		ofAddListener(ofEvents().draw, this, &ofxFadecandy::draw);	
+	}
+	autoDraw = !autoDraw;
+}
+
+bool ofxFadecandy::getAutoDrawState()
+{
+	return autoDraw;
+}
+
 // initialize framebuffer to accomodate data for specified number of LED pixels
 void ofxFadecandy::initFrameBuffer(int npixels)
 {
-	this->frameBytes = npixels*3;
+	// number of bytes needed for RGB color data
+	const int frameBytes = npixels*3;
 
 	// resize capacity 
 	frameBuffer.resize(sizeof(OPCClient::Header) + frameBytes);
+
 	// construct header
 	OPCClient::Header::view(frameBuffer).init(0, opc.SET_PIXEL_COLORS, frameBytes);
 
-	// ofLog(OF_LOG_NOTICE) << "headLength" + ofToString(sizeof(OPCClient::Header));
-
-	// ofLog(OF_LOG_NOTICE) << "fbLength=" + ofToString(frameBuffer.size());
-	// ofLog(OF_LOG_NOTICE) << "fb0=" + ofToString(frameBuffer[0]);
-	// ofLog(OF_LOG_NOTICE) << "fb1=" + ofToString(frameBuffer[1]);
-	// ofLog(OF_LOG_NOTICE) << "fb2=" + ofToString(frameBuffer[2]);
-	// ofLog(OF_LOG_NOTICE) << "fb3=" + ofToString(frameBuffer[3]);
 }
 
-// count number of LEDs in each LED group, and initialize frame buffer
+// count number of LEDs and initialize frame buffer
 void ofxFadecandy::initFrameBuffer()
 {
-	int npx = 0;
-	for (uint i=0; i< LEDgroups.size(); i++)
-	{
-		npx += LEDgroups[i]->pixelCoords.size();		
-	}
-
-	initFrameBuffer(npx);
+	initFrameBuffer(allLEDcoords.size());
 }
 
 /*
@@ -74,43 +122,53 @@ void ofxFadecandy::setupStage(int x0, int y0, int width, int height)
 	stageWidth = width;
 	stageHeight = height;
 
-	glPixels = new unsigned char [stageWidth * stageHeight * 4];
+	//glPixels = new unsigned char [stageWidth * stageHeight * 4];
     // screenCapture.allocate(stageWidth, stageHeight, GL_RGBA);
     // screenCapture.begin();
     //     ofClear(0);
     // screenCapture.end();
 
-    screen.allocate(stageWidth,stageHeight,ofImageType::OF_IMAGE_COLOR_ALPHA);
+    stageImg.allocate(stageWidth,stageHeight,ofImageType::OF_IMAGE_COLOR_ALPHA);
 }
 
 // Get pixel data from entire capture region 
 void ofxFadecandy::updateStagePixels()
 {
-	// read block of pixels from frame buffer
-	glReadPixels(stageX0, stageY0, stageWidth, stageHeight, GL_RGBA,
-	 GL_UNSIGNED_BYTE, glPixels);
 
-	screen.getTexture().loadScreenData(stageX0, stageY0, stageWidth, stageHeight);
-	screen.getTexture().readToPixels(stagePixels);
-	stagePixels.mirror(true, false);
-
-	const int LEDcount = allLEDcoords.size();
-	for (int i=0; i<LEDcount; i++)
-	{		
-		const int x = allLEDcoords[i].x - stageX0;
-		const int y = allLEDcoords[i].y - stageY0;
-		// ofLog(OF_LOG_NOTICE,"x="+ofToString(x)+"; y="+ofToString(y));
-
-		allLEDcolors[i] = stagePixels.getColor(x, y);
+	if (stageX0==-1 || stageY0==-1 || stageWidth ==-1 || stageHeight == -1)
+	{
+		string errMsg = "Stage has not been configured. Did you call \"setupStage\"?\n";
+		ofLog(OF_LOG_ERROR) << errMsg;
+		error.push_back(errMsg);
+		ofSystemAlertDialog(errMsg);
 	}
 
-	//screenCapture.end();
+	try
+	{
+		// get stage pixel data from OpenGL screen data
+		stageImg.getTexture().loadScreenData(stageX0, stageY0, stageWidth, stageHeight);
+		stageImg.getTexture().readToPixels(stagePixels);
+		
+		// flip vertically; OpenGL uses opposite convention than OFX
+		stagePixels.mirror(true, false);
 
+		const int LEDcount = allLEDcoords.size();
+		for (int i=0; i<LEDcount; i++)
+		{		
+			const int x = allLEDcoords[i].x - stageX0;
+			const int y = allLEDcoords[i].y - stageY0;
+
+			allLEDcolors[i] = stagePixels.getColor(x, y);
+		}
+	}
+	catch (const std::exception& e)
+	{
+		string errMsg = "Error updating stage pixels. Verify stage dimensions are sensible.\n" + ofToString(e.what());
+		ofLog(OF_LOG_ERROR) << errMsg;
+		error.push_back(errMsg);
+		ofSystemAlertDialog(errMsg);
+	}
 	
-
-	// store data in stagePixels
-	// stagePixels.setFromPixels(glPixels, stageWidth, stageHeight, OF_IMAGE_COLOR_ALPHA);
-
 
 }
 
@@ -119,14 +177,11 @@ void ofxFadecandy::updateStagePixels()
 void ofxFadecandy::update(ofEventArgs& event)
 {
 	// clear errors
-	error.clear();
-	
-	// update screen capture
-	//screenCapture.begin();	
-	// ofLog(OF_LOG_NOTICE,"--scBEGIN--");
+	error.clear();	
 
 }
 
+// draw method called every loop.  This gets called AFTER ofApp::draw
 void ofxFadecandy::draw(ofEventArgs& event)
 {
 	// ofLog(OF_LOG_NOTICE,"draw fc");
@@ -136,48 +191,39 @@ void ofxFadecandy::draw(ofEventArgs& event)
 	ofDrawRectangle(stageX0, stageY0, stageWidth, stageHeight);
 
 	this->updateStagePixels();
-	//screenCapture.draw(stageX0,stageY0);
-
-
-	//**TODO: add call to updateStagePixels?
 
 }
 
+// send color data to OPC server.  "pixels" must have data for all LEDs in frame
 void ofxFadecandy::write(vector<ofColor> pixels)
 {
-	int N = pixels.size();
-	
-	// // vector to hold color data
-	// std::vector<uint8_t> data;
-
-	// // store r,g,b data sequentially for each pixel
-	// for (int p=0; p<N; p++)
-	// {
-	// 	data.push_back(pixels[p].r);
-	// 	data.push_back(pixels[p].g);
-	// 	data.push_back(pixels[p].b);
-	// }
-
-
-	// use pointer arithmetic to populate frameBuffer data
-	uint8_t *dest = OPCClient::Header::view(frameBuffer).data();
-	for (int p=0; p<N; p++)
+	if (opc.tryConnect())
 	{
-		*(dest++) = std::min<int>(255, std::max<int>(0, pixels[p].r));
-		*(dest++) = std::min<int>(255, std::max<int>(0, pixels[p].g));
-		*(dest++) = std::min<int>(255, std::max<int>(0, pixels[p].b));		
+		int N = pixels.size();
+		
+		// use pointer arithmetic to populate frameBuffer data using
+		// 	Header struct in opc_client.  
+		//	(Same method as used by EffectRunner in fadecandy cpp example code)
+		uint8_t *dest = OPCClient::Header::view(frameBuffer).data();
+		
+		// add rgb color data for each pixel, sequentially
+		for (int p=0; p<N; p++)
+		{
+			*(dest++) = std::min<int>(255, std::max<int>(0, pixels[p].r));
+			*(dest++) = std::min<int>(255, std::max<int>(0, pixels[p].g));
+			*(dest++) = std::min<int>(255, std::max<int>(0, pixels[p].b));		
+		}
+
+		// write data to device
+		opc.write(frameBuffer);
 	}
-
-	// ofLog(OF_LOG_NOTICE) << ofToString(frameBuffer[5]);
-
-	// write data to device
-	opc.write(frameBuffer);
 }
 
 void ofxFadecandy::connect()
 {
 	opc.tryConnect();
 }
+
 
 OPCClient& ofxFadecandy::getClient()
 {

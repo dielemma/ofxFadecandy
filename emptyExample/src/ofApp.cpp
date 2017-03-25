@@ -20,13 +20,13 @@ void ofApp::setup(){
 	for (int i=0; i<8; i++)
 	{
 		strips.push_back(make_shared<ofxLEDstrip>(id, LEDs_per_strip, 200, 50*(i+3),5,0,false));
-		fc.LEDgroups.push_back(strips.back());
+		// fc.LEDgroups.push_back(strips.back());
 		id+=30;
 	}
 	for (int i=0; i<8; i++)
 	{
 		strips.push_back(make_shared<ofxLEDstrip>(id, LEDs_per_strip, 600, 50*(i+3),5,0,false));
-		fc.LEDgroups.push_back(strips.back());
+		// fc.LEDgroups.push_back(strips.back());
 		id+=30;
 	}
 
@@ -45,8 +45,6 @@ void ofApp::setup(){
 
 	fc.initFrameBuffer();
 
-
-	ofLog(OF_LOG_NOTICE, "groups=" + ofToString(fc.LEDgroups.size()));
 }
 
 //--------------------------------------------------------------
